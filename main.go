@@ -1,0 +1,80 @@
+package main
+
+import (
+	"log"
+	"os"
+
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
+)
+
+const (
+	mountPoint = "./mnt/all-projects"
+	nfsDir     = "./nfs" // Path to our simulated NFS directory
+	ssdDir     = "./ssd" // Path to our simulated SSD cache directory
+)
+
+func main() {
+	ensureDirs(mountPoint, nfsDir, ssdDir)
+
+	c, err := fuse.Mount(
+		mountPoint,
+		fuse.FSName("cachingfs"),
+		fuse.Subtype("cachefs"),
+		// fuse.LocalVolume(), // Useful for macOS, might not be needed on Linux
+		fuse.AllowOther(), // Allows non-root users to access, useful in Codespaces
+		// fuse.Debug(true), // Very verbose FUSE debugging
+	)
+	if err != nil {
+		log.Fatalf("Initialising FUSE connection to dir %s: %v", mountPoint, err)
+	}
+	defer func(c *fuse.Conn) {
+		err := c.Close()
+		if err != nil {
+			log.Fatalf("Closing FUSE connection to dir %s: %v", mountPoint, err)
+		}
+	}(c)
+	defer func() {
+		err := fuse.Unmount(mountPoint)
+		if err != nil {
+			log.Fatalf("Unmounting FUSE connection to dir %s: %v", mountPoint, err)
+		}
+	}()
+
+	log.Println("Filesystem mounted. Ctrl+C to unmount and exit.")
+
+	_ = os.MkdirAll(nfsDir+"/project-1", 0755)
+	_ = os.WriteFile(nfsDir+"/project-1/main.py", []byte("# project-1 main.py\nprint('Hello from project-1 main')"), 0644)
+	_ = os.WriteFile(nfsDir+"/project-1/common-lib.py", []byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"), 0644)
+
+	_ = os.MkdirAll(nfsDir+"/project-2", 0755)
+	_ = os.WriteFile(nfsDir+"/project-2/entrypoint.py", []byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"), 0644)
+	_ = os.WriteFile(nfsDir+"/project-2/common-lib.py", []byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"), 0644)
+
+	log.Println("Initial NFS file structure created.")
+
+	err = fs.Serve(c, FS{})
+	if err != nil {
+		log.Fatalf("Serve failed: %v", err)
+	}
+}
+
+// TODO(wes): Bubble errs up
+func ensureDirs(mount, nfs, ssd string) {
+	log.Printf("Mounting filesystem at %s", mountPoint)
+	if err := os.MkdirAll(mount, 0755); err != nil {
+		log.Fatalf("Creating mount point %s: %v", mount, err)
+	}
+
+	// Create nfsPath and ssdPath if they don't exist for initial setup
+	if err := os.MkdirAll(nfs, 0755); err != nil {
+		log.Fatalf("Creating NFS path %s: %v", nfs, err)
+	}
+	log.Printf("NFS source: %s", nfsDir)
+
+	if err := os.MkdirAll(ssd, 0755); err != nil {
+		log.Fatalf("Creating SSD path %s: %v", ssd, err)
+	}
+	log.Printf("SSD cache: %s", ssdDir)
+
+}
