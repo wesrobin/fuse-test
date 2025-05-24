@@ -3,10 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
 	_ "bazil.org/fuse/fs/fstestutil"
 )
 
@@ -17,60 +17,77 @@ const (
 )
 
 func main() {
-	absNFS, absSSD := ensureDirs(mountPoint, nfsDir, ssdDir)
+	ensureDirs(mountPoint, nfsDir, ssdDir)
 
-	log.Printf("Mounting filesystem at %s", mountPoint)
+	log.Printf("Mount point at %s", mountPoint)
 	log.Printf("NFS source (relative): %s", nfsDir)
 	log.Printf("SSD cache (relative): %s", ssdDir)
 
-	// absNFS, absSSD = nfsDir, ssdDir
+	fuseFS := NewFS(mountPoint, nfsDir)
 
-	c, err := fuse.Mount(
-		mountPoint,
-		fuse.FSName("cachingfs"),
-		fuse.Subtype("cachefs"),
-		// fuse.AsyncRead(), // Can add for concurrent reads
-	)
-	if err != nil {
-		log.Fatalf("Initialising FUSE connection to dir %s: %v", mountPoint, err)
+	if err := fuseFS.Mount(); err != nil {
+		log.Fatalf("failed to mount: '%v'", err)
 	}
-	defer func(c *fuse.Conn) {
-		err := c.Close()
-		if err != nil {
-			log.Fatalf("Closing FUSE connection to dir %s: %v", mountPoint, err)
-		}
-	}(c)
-	defer func() {
-		err := fuse.Unmount(mountPoint)
-		if err != nil {
-			log.Fatalf("Unmounting FUSE connection to dir %s: %v", mountPoint, err)
+
+	log.Printf("Mounted file system at '%v'", mountPoint)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		log.Printf("Unmounted filesystem from %s", mountPoint)
+		if err := fuseFS.Unmount(); err != nil {
+			log.Fatalf("failed to unmount: '%v'", err)
 		}
 	}()
 
-	log.Println("Filesystem mounted. Ctrl+C to unmount and exit.")
-
-	_ = os.MkdirAll(filepath.Join(absNFS, "/project-1"), 0755)
-	_ = os.WriteFile(filepath.Join(absNFS, "/project-1/main.py"), []byte("# project-1 main.py\nprint('Hello from project-1 main')"), 0644)
-	_ = os.WriteFile(filepath.Join(absNFS, "/project-1/common-lib.py"), []byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"), 0644)
-
-	_ = os.MkdirAll(filepath.Join(absNFS, "/project-2"), 0755)
-	_ = os.WriteFile(filepath.Join(absNFS, "/project-2/entrypoint.py"), []byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"), 0644)
-	_ = os.WriteFile(filepath.Join(absNFS, "/project-2/common-lib.py"), []byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"), 0644)
-
-	log.Println("Initial NFS file structure created.")
-
-	log.Printf("DEBUG main: absNFSPath = '%s', absSSDPath = '%s'", absNFS, absSSD)
-
-	fuseFS := NewFS(absNFS, absSSD)
-
-	err = fs.Serve(c, fuseFS)
-	if err != nil {
-		log.Fatalf("Serve failed: %v", err)
+	if err := fuseFS.Serve(); err != nil {
+		log.Fatalf("failed to serve: '%v'", err)
 	}
+
+	// c, err := fuse.Mount(
+	// 	mountPoint,
+	// 	fuse.FSName("cachingfs"),
+	// 	fuse.Subtype("cachefs"),
+	// 	// fuse.AsyncRead(), // Can add for concurrent reads
+	// )
+	// if err != nil {
+	// 	log.Fatalf("Initialising FUSE connection to dir %s: %v", mountPoint, err)
+	// }
+	// sigChan := make(chan os.Signal, 1)
+	// signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	// go func() {
+	// 	<-sigChan
+	// 	err := c.Close()
+	// 	if err != nil {
+	// 		log.Fatalf("Closing FUSE connection to dir %s: %v", mountPoint, err)
+	// 	}
+	// 	log.Printf("Closed fuse connection to %s", mountPoint)
+
+	// 	if err = fuse.Unmount(mountPoint); err != nil {
+	// 		log.Fatalf("failed to unmount: %w", err)
+	// 	}
+	// 	log.Printf("Unmounted filesystem from %s", mountPoint)
+	// }()
+
+	// log.Println("Filesystem mounted. Ctrl+C to unmount and exit.")
+
+	// log.Println("Initial NFS file structure created.")
+
+	// log.Printf("DEBUG main: absNFSPath = '%s', absSSDPath = '%s'", absNFS, absSSD)
+
+	// fuseFS := NewFS(absNFS, absSSD)
+
+	// fsSrv := fs.New(c, &fs.Config{Debug: func(msg interface{}) { log.Printf("SERVER_DEBUG: '%v'", msg) }})
+
+	// err = fsSrv.Serve(fuseFS)
+	// if err != nil {
+	// 	log.Fatalf("Serve failed: %v", err)
+	// }
 }
 
 // TODO(wes): Bubble errs up
-func ensureDirs(mount, nfs, ssd string) (string, string) {
+func ensureDirs(mount, nfs, ssd string) {
 	if err := os.MkdirAll(mount, 0755); err != nil {
 		log.Fatalf("Creating mount point %s: %v", mount, err)
 	}
@@ -87,14 +104,11 @@ func ensureDirs(mount, nfs, ssd string) (string, string) {
 	}
 	log.Printf("SSD cache: %s", ssdDir)
 
-	absNFSPath, err := filepath.Abs(nfs)
-	if err != nil {
-		log.Fatalf("Failed to get absolute path for NFS: %v", err)
-	}
-	absSSDPath, err := filepath.Abs(ssd)
-	if err != nil {
-		log.Fatalf("Failed to get absolute path for SSD: %v", err)
-	}
+	_ = os.MkdirAll(filepath.Join(nfs, "/project-1"), 0755)
+	_ = os.WriteFile(filepath.Join(nfs, "/project-1/main.py"), []byte("# project-1 main.py\nprint('Hello from project-1 main')"), 0644)
+	_ = os.WriteFile(filepath.Join(nfs, "/project-1/common-lib.py"), []byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"), 0644)
 
-	return absNFSPath, absSSDPath
+	_ = os.MkdirAll(filepath.Join(nfs, "/project-2"), 0755)
+	_ = os.WriteFile(filepath.Join(nfs, "/project-2/entrypoint.py"), []byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"), 0644)
+	_ = os.WriteFile(filepath.Join(nfs, "/project-2/common-lib.py"), []byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"), 0644)
 }
