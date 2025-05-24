@@ -6,6 +6,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	_ "bazil.org/fuse/fs/fstestutil"
 )
 
 const (
@@ -21,9 +22,6 @@ func main() {
 		mountPoint,
 		fuse.FSName("cachingfs"),
 		fuse.Subtype("cachefs"),
-		// fuse.LocalVolume(), // Useful for macOS, might not be needed on Linux
-		fuse.AllowOther(), // Allows non-root users to access, useful in Codespaces
-		// fuse.Debug(true), // Very verbose FUSE debugging
 	)
 	if err != nil {
 		log.Fatalf("Initialising FUSE connection to dir %s: %v", mountPoint, err)
@@ -61,10 +59,12 @@ func main() {
 
 // TODO(wes): Bubble errs up
 func ensureDirs(mount, nfs, ssd string) {
-	log.Printf("Mounting filesystem at %s", mountPoint)
+	// if _, err := os.Stat(mount); errors.Is(err, os.ErrNotExist) {
 	if err := os.MkdirAll(mount, 0755); err != nil {
 		log.Fatalf("Creating mount point %s: %v", mount, err)
 	}
+	// }
+	log.Printf("Mount created: %s", mount)
 
 	// Create nfsPath and ssdPath if they don't exist for initial setup
 	if err := os.MkdirAll(nfs, 0755); err != nil {
@@ -76,5 +76,4 @@ func ensureDirs(mount, nfs, ssd string) {
 		log.Fatalf("Creating SSD path %s: %v", ssd, err)
 	}
 	log.Printf("SSD cache: %s", ssdDir)
-
 }
