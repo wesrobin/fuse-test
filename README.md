@@ -221,11 +221,10 @@ The file system is designed as a read-only layer that sits on top of an existing
 
 ## Further Improvements
 
-While functional, this project can be extended and improved in several areas:
-
 * Updates made to the NFS directory after mounting are currently reflected in the FUSE mount.
 * I did not manage to get around to caching based on a hash of file contents.
-* LRU cache implementation is a bit naive. It can be improved a bunch
+* LRU cache implementation is a bit naive. It can be improved a bunch.
+* In fact, in general I think the way the file system interacts with the cache is a little undercooked. Lots of improvements that can be made here.
 * File contents are read from NFS into memory, then written into the corresponding SSD file. This will be really slow and potentially not work with giant files.
 * I think seprarting File and Dir types that implement the fs.Node interface would be preferable. There's a bunch of `if isDir` checks in the code, this could be easily avoided.
 * Error handling could be better. Most of the time, errors are just bubbled up to the FUSE server. Greater care should be taken to map errors to linux error codes. In most obvious cases, I have done this, but it still feels a little half-baked.
