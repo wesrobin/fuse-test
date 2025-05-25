@@ -78,7 +78,7 @@ For these tests, `./build.sh` with default source directory. Each test is a seri
 
 NOTE: If you see the following error:
 ```bash
-ERROR: Failed to write to cache project-1/main.py: open /workspaces/cerebrium-test/ssd/project-1$main.py: permission denied. Proceeding without caching.
+ERROR: Failed to write to cache project-1/main.py: open /workspaces/fuse-test/ssd/<path$file_name>: permission denied. Proceeding without caching.
 ```
 it's because you need to rebuild the directory structure (just run `build.sh` after unmounting the drive). Annoying I know.
 
