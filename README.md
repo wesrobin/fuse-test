@@ -1,8 +1,8 @@
 # Fuse Test - A FUSE-based File System with Caching
 
-This project implements a simple read-only FUSE (Filesystem in Userspace) file system in Go. It uses a primary storage directory (simulating an NFS mount) and a secondary SSD directory for caching frequently accessed files.
+This project implements a simple read-only FUSE (Filesystem in Userspace) file system in Go, wrapping [basil.org/fuse](https://github.com/bazil/fuse). It uses a primary storage directory (simulating an NFS mount) and a secondary SSD directory for caching frequently accessed files.
 
-Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
+Disclaimer, an LLM wrote most of this, so it is very wordy. Sorry.
 
 ## Features
 
