@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -16,14 +17,32 @@ const (
 	nfsDir     = "./nfs" // Path to our simulated NFS directory
 	ssdDir     = "./ssd" // Path to our simulated SSD cache directory
 
-	nfsFileReadDelay = time.Millisecond * 500
+	nfsFileReadDelay = time.Second
 
 	perm_READWRITEEXECUTE = 0o700
 	perm_READEXECUTE      = 0o500
 	perm_READ             = 0o400
 )
 
+var (
+	// ** Cache specific **
+	cache       = flag.String("cache", "default", "Define which cache to use (size, lru). If not specified, default cache is used.\n EXAMPLE: --cache=lru")
+	lruCapacity = flag.Int("lrucap", 2, "Define the capacity of the LRU cache. Only used when --cache=lru is set.")
+	lruDebug    = flag.Bool("lrudebug", false, "When specified, enable cache debugging (only available with LRU cache).")
+	sizeLimit   = flag.Int64("sizelim", 128, "Define the capacity of the Size Limited cache. Only used when --cache=size is set.")
+
+	// ** FUSE debugging **
+	debugServer = flag.Bool("sdebug", false, "When specified, log FUSE server messages.")
+)
+
+func usage() {
+	flag.PrintDefaults()
+}
+
 func main() {
+	flag.Usage = usage
+	flag.Parse()
+
 	ensureDirs(mountPoint, nfsDir, ssdDir)
 
 	log.Printf("Mount point at %s", mountPoint)
@@ -37,9 +56,7 @@ func main() {
 		log.Fatalf("FATAL: Could not find SSD path '%s'", absSSDDir)
 	}
 
-	cache := NewLRUCache(absSSDDir, 2, true)
-
-	fuseFS := NewFS(mountPoint, nfsDir, ssdDir, cache)
+	fuseFS := NewFS(mountPoint, nfsDir, ssdDir, initCache(absSSDDir))
 
 	if err := fuseFS.Mount(); err != nil {
 		log.Fatalf("failed to mount: '%v'", err)
@@ -57,20 +74,22 @@ func main() {
 		}
 	}()
 
-	defer func() {
-		if r := recover(); r != nil {
-			// Possible we haven't unmounted yet
-			err := fuseFS.Unmount()
-			if err != nil {
-				log.Printf("Err from unmount '%v", err)
-			}
-			log.Fatalf("Recovered in f: %v", r)
-		}
-	}()
-
-	if err := fuseFS.Serve(false); err != nil {
+	if err := fuseFS.Serve(*debugServer); err != nil {
 		log.Fatalf("failed to serve: '%v'", err)
 	}
+}
+
+func initCache(ssdDir string) Cache {
+	var c Cache
+	switch *cache {
+	case "lru":
+		c = NewLRUCache(ssdDir, *lruCapacity, *lruDebug)
+	case "size":
+		c = NewSizeLimitedCache(ssdDir, *sizeLimit)
+	default:
+		c = NewDefaultCache(ssdDir)
+	}
+	return c
 }
 
 // TODO(wes): Bubble errs up

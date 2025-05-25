@@ -157,7 +157,7 @@ func (lru *lruCache) Get(path string) ([]byte, error) {
 	_ = lru.promote(flatPath) // Not putting anything new in, ignore evicted
 
 	if lru.debug {
-		log.Printf("DEBUG: LRU cache updated, members: %v", lru.queue)
+		log.Printf("LRU_DEBUG: LRU cache updated, members: %v", lru.queue)
 	}
 
 	cachedData, err := os.ReadFile(filepath.Join(lru.ssdBasePath, flatPath))
