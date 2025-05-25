@@ -45,8 +45,6 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	// ensureDirs(mountPoint, nfsDir, ssdDir)
-
 	log.Printf("Mount point at %s", mountPoint)
 	log.Printf("NFS source (relative): %s", nfsDir)
 	log.Printf("SSD cache (relative): %s", ssdDir)
@@ -92,55 +90,4 @@ func initCache(ssdDir string) Cache {
 		c = NewDefaultCache(ssdDir)
 	}
 	return c
-}
-
-// TODO(wes): Bubble errs up
-func ensureDirs(mount, nfs, ssd string) {
-	if err := os.RemoveAll(mount); err != nil && !os.IsNotExist(err) {
-		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
-	}
-	if err := os.MkdirAll(mount, perm_READWRITEEXECUTE); err != nil {
-		log.Fatalf("Creating mount point %s: %v", mount, err)
-	}
-	log.Printf("Mount created: %s", mount)
-
-	// Create nfsPath and ssdPath if they don't exist for initial setup
-	if err := os.RemoveAll(nfs); err != nil && !os.IsNotExist(err) {
-		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
-	}
-	if err := os.MkdirAll(nfs, perm_READWRITEEXECUTE); err != nil {
-		log.Fatalf("Creating NFS path %s: %v", nfs, err)
-	}
-	log.Printf("NFS source: %s", nfsDir)
-
-	if err := os.RemoveAll(ssd); err != nil && !os.IsNotExist(err) {
-		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
-	}
-	if err := os.MkdirAll(ssd, perm_READWRITEEXECUTE); err != nil {
-		log.Fatalf("Creating SSD path %s: %v", ssd, err)
-	}
-	log.Printf("SSD cache: %s", ssdDir)
-
-	_ = os.MkdirAll(
-		filepath.Join(nfs, "/project-1"),
-		perm_READWRITEEXECUTE)
-	_ = os.WriteFile(
-		filepath.Join(nfs, "/project-1/main.py"),
-		[]byte("# project-1 main.py\nprint('Hello from project-1 main')"),
-		perm_READWRITEEXECUTE)
-	_ = os.WriteFile(
-		filepath.Join(nfs, "/project-1/common-lib.py"),
-		[]byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"),
-		perm_READWRITEEXECUTE)
-
-	_ = os.MkdirAll(
-		filepath.Join(nfs, "/project-2"), perm_READWRITEEXECUTE)
-	_ = os.WriteFile(
-		filepath.Join(nfs, "/project-2/entrypoint.py"),
-		[]byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"),
-		perm_READWRITEEXECUTE)
-	_ = os.WriteFile(
-		filepath.Join(nfs, "/project-2/common-lib.py"),
-		[]byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"),
-		perm_READWRITEEXECUTE)
 }
