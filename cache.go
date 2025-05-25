@@ -37,7 +37,7 @@ type defaultCache struct {
 func (d *defaultCache) Get(path string) ([]byte, error) {
 	flatPath := flattenDirPath(path)
 
-	cachedData, err := os.ReadFile(filepath.Join(s.ssdBasePath, flatPath))
+	cachedData, err := os.ReadFile(filepath.Join(d.ssdBasePath, flatPath))
 	if os.IsNotExist(err) {
 		// An error other than "file not found" occurred when reading from SSD.
 		return nil, ErrNotFoundCache
@@ -51,7 +51,7 @@ func (d *defaultCache) Get(path string) ([]byte, error) {
 func (d *defaultCache) Put(path string, data []byte, mode os.FileMode) error {
 	// Write the file to SSD with the same permissions it has in FUSE/NFS.
 	flatPath := flattenDirPath(path)
-	fileName := filepath.Join(s.ssdBasePath, flatPath)
+	fileName := filepath.Join(d.ssdBasePath, flatPath)
 	if err := os.WriteFile(fileName, data, mode); err != nil {
 		return err
 	}
