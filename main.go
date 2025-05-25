@@ -30,7 +30,16 @@ func main() {
 	log.Printf("NFS source (relative): %s", nfsDir)
 	log.Printf("SSD cache (relative): %s", ssdDir)
 
-	fuseFS := NewFS(mountPoint, nfsDir, ssdDir)
+	absSSDDir, err := filepath.Abs(ssdDir)
+	if err != nil {
+		log.Fatalf("FATAL: Invalid SSD relative path '%s'", ssdDir)
+	} else if _, err := os.Stat(absSSDDir); err != nil {
+		log.Fatalf("FATAL: Could not find SSD path '%s'", absSSDDir)
+	}
+
+	cache := NewSizeLimitedCache(absSSDDir, 60)
+
+	fuseFS := NewFS(mountPoint, nfsDir, ssdDir, cache)
 
 	if err := fuseFS.Mount(); err != nil {
 		log.Fatalf("failed to mount: '%v'", err)

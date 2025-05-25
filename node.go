@@ -58,10 +58,6 @@ func (n *fuseFSNode) nfsPathAbs() string {
 	return filepath.Join(n.FS.nfsBaseAbs, n.parentPathRel, n.Name)
 }
 
-func (n *fuseFSNode) ssdPathAbs() string {
-	return filepath.Join(n.FS.ssdBaseAbs, flattenDirPath(n.relPath()))
-}
-
 func (n *fuseFSNode) stat() (native_fs.FileInfo, error) {
 	return os.Stat(n.nfsPathAbs()) // NFS is source of truth
 }
@@ -75,18 +71,18 @@ func (n *fuseFSNode) data() ([]byte, error) {
 	}
 
 	// 1. Try reading from SSD cache
-	cachedData, err := os.ReadFile(n.ssdPathAbs())
+	cachedData, err := n.FS.ssdCache.Get(n.relPath())
 	if err == nil {
 		log.Printf("CACHE HIT: Read %d bytes from SSD for '%s'", len(cachedData), n.relPath())
 		return cachedData, nil
 	}
-	if !os.IsNotExist(err) {
-		// An error other than "file not found" occurred when reading from SSD.
-		log.Printf("WARNING: Error reading from SSD cache for %s (will try NFS): %v", n.ssdPathAbs(), err)
+	if err != ErrNotFoundCache {
+		// An error other than the file not being present in the cache - could be bad but we should continue
+		log.Printf("WARNING: Error reading from SSD cache for %s (will try NFS): %v", n.relPath(), err)
 	}
 
+	// 2. Try reading from NFS file system
 	time.Sleep(nfsFileReadDelay)
-
 	nfsData, err := os.ReadFile(n.nfsPathAbs())
 	if err != nil {
 		log.Printf("ERROR: Failed to read from NFS path %s: %v", n.nfsPathAbs(), err)
@@ -94,11 +90,13 @@ func (n *fuseFSNode) data() ([]byte, error) {
 	}
 	log.Printf("NFS Read OK: Read %d bytes for '%s'", len(nfsData), n.relPath())
 
-	// Write the file to SSD with the same permissions it has in FUSE/NFS.
-	if writeErr := os.WriteFile(n.ssdPathAbs(), nfsData, n.Mode); writeErr != nil {
-		log.Printf("ERROR: Failed to write to SSD cache %s: %v. Proceeding without caching.", n.ssdPathAbs(), writeErr)
+	// 3. Write the file to the cache with the same permissions it has in FUSE/NFS.
+	if err := n.FS.ssdCache.Put(n.relPath(), nfsData, n.Mode); err == ErrWontCache {
+		log.Printf("WARNING: Cache refuse to write file: '%v'", err)
+	} else if err != nil {
+		log.Printf("ERROR: Failed to write to cache %s: %v. Proceeding without caching.", n.relPath(), err)
 	} else {
-		log.Printf("CACHED: Copied '%s' from NFS to SSD '%s'", n.relPath(), n.ssdPathAbs())
+		log.Printf("CACHED: Copied '%s' from NFS to cache", n.relPath())
 	}
 
 	return nfsData, nil

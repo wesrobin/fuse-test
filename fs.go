@@ -21,7 +21,7 @@ type FuseFS interface {
 	fs.FSInodeGenerator
 }
 
-func NewFS(mountpoint, nfsDir, ssdDir string) FuseFS {
+func NewFS(mountpoint, nfsDir, ssdDir string, cache Cache) FuseFS {
 	absNFSDir, err := filepath.Abs(nfsDir)
 	if err != nil {
 		log.Fatalf("FATAL: Invalid NFS relative path '%s'", nfsDir)
@@ -40,6 +40,7 @@ func NewFS(mountpoint, nfsDir, ssdDir string) FuseFS {
 		lastInode:  1,
 		nfsBaseAbs: absNFSDir,
 		ssdBaseAbs: absSSDDir,
+		ssdCache:   cache,
 	}
 
 	rootNode, err := loadFSTree(rfs)
@@ -62,7 +63,7 @@ type fuseFS struct {
 	ssdBaseAbs string
 
 	rootNode FuseFSNode // TODO(wes): Should this rather be a map[path]node?
-	// Add SSD here
+	ssdCache Cache
 }
 
 func (rfs *fuseFS) Mount() error {
@@ -84,10 +85,10 @@ func (rfs *fuseFS) Serve(debug bool) error {
 	fsConf := new(fs.Config)
 	if debug {
 		fsConf.Debug = func(msg any) {
-				log.Printf("S_DEBUG: '%v'", msg)
-			}
+			log.Printf("S_DEBUG: '%v'", msg)
+		}
 	}
-	server := fs.New(rfs.conn,fsConf)
+	server := fs.New(rfs.conn, fsConf)
 	return server.Serve(rfs)
 }
 
