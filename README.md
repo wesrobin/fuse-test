@@ -214,9 +214,9 @@ The file system is designed as a read-only layer that sits on top of an existing
     * I _think_ this is expected, cat only does it once so it’s possible that executing reads the file once, and again to run? I’m not completely sure so including it here.
 * Codespaces might randomly start bugging out complaining of some Go version.
     * If this happens, you need to tear down the code spaces instance. It’s fatal.
-* Panics cause a lot of havoc. I’ve tried to catch them somewhat gracefully but there’s no guarantee the mounted directory gets unmounted. Have to manually unmount and rebuild to wipe the directories.
-* “Device or resource busy”: sometimes fuse can’t unmount the dir when the go binary is terminated, even when nothing is obviously using mnt/all-projects. I’m not sure why this happens, possible the OS (or VSCode) is doing something during the unmount time.
-    * `fusermount3 -u met/all-projects` + `./build.sh` mostly works, but in my experience sometimes it is unrecoverable, time to tear down Codespaces (I’m sure there’s a better way to do this)
+* Panics cause a lot of havoc. There’s no guarantee the mounted directory gets unmounted. In this case manually unmount and rebuild to wipe the directories. I should hope there aren't ways to make this thing panic but you never know.
+* “Device or resource busy”: sometimes fuse can’t unmount the dir when the go binary is terminated, even when nothing is obviously using mnt/all-projects. I’m not sure why this happens, possible the OS (or VSCode) is doing something precisely during the unmount time.
+    * `fusermount3 -u met/all-projects` + `./build.sh` mostly works to reset the environment, but in my experience sometimes it is unrecoverable, time to tear down Codespaces (I’m sure there’s a better way to do this)
 * LRU cache is written with a backing array, not a doubly linked list. Means it’s a bit slower, but implementation in go was easier.
 
 ## Further Improvements
