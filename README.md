@@ -18,21 +18,22 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
 ## How to Run
 
 1.  **Prerequisites**:
-    * Go programming language environment.
-    * `fuse3` library. The build script will attempt to install this using `sudo apt install -y fuse3` if `fusermount3` is not found.
+    * Go (built on v1.24.2).
+    * Access to `apt-get`. The build script will attempt to install fuse3 using `sudo apt install -y fuse3` if `fusermount3` is not found.
 
-2.  **Clone the repository (if you haven't already):**
+3.  **Clone the repository or open a new Codespaces instance:**
+    Apparently MacOSX doesn't play well with FUSE, so prefer Codespaces if you have a mac. If not, you can clone locally.
     ```bash
     git clone <your-repo-url>
     cd <your-repo-directory>
     ```
 
-3.  **Make the build script executable:**
+5.  **Make the build script executable (if it's not):**
     ```bash
     chmod +x build.sh
     ```
 
-4.  **Run the build script:**
+6.  **Run the build script:**
     ```bash
     ./build.sh
     ```
@@ -42,14 +43,14 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
         * Build the Go application (output binary: `fuse-test`).
         * Create necessary directories: `nfs`, `ssd`, and `mnt/all-projects`.
 
-5.  **Run the FUSE file system:**
+7.  **Run the FUSE file system:**
     After the build script completes, you can run the application. The script summary will remind you:
     ```bash
     ./fuse-test
     ```
     This will mount the file system at `./mnt/all-projects`.
 
-6.  **Access the mounted file system:**
+8.  **Access the mounted file system:**
     In another terminal, you can navigate to `./mnt/all-projects` and list or execute its contents:
     ```bash
     cd ./mnt/all-projects
@@ -58,8 +59,8 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
     python <some-file>.py # Runs the file.
     ```
 
-7.  **Unmount the file system:**
-    Press `Ctrl+C` to terminate `fuse-test`. You should see a log saying the file system was unmounted. If you don't, you can use 
+9.  **Unmount the file system:**
+    Press `Ctrl+C` to terminate `fuse-test`. You should see a log saying the file system was unmounted. If you don't or there are _any_ errors, you can use 
     ```bash
     fusermount3 -u /mnt/all-projects
     ```
