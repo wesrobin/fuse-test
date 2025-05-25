@@ -73,7 +73,7 @@ func (n *fuseFSNode) data() ([]byte, error) {
 	// 1. Try reading from SSD cache
 	cachedData, err := n.FS.ssdCache.Get(n.relPath())
 	if err == nil {
-		log.Printf("CACHE HIT: Read %d bytes from SSD for '%s'", len(cachedData), n.relPath())
+		log.Printf("CACHE_HIT: Read %d bytes from SSD for '%s'", len(cachedData), n.relPath())
 		return cachedData, nil
 	}
 	if err != ErrNotFoundCache {
@@ -88,7 +88,7 @@ func (n *fuseFSNode) data() ([]byte, error) {
 		log.Printf("ERROR: Failed to read from NFS path %s: %v", n.nfsPathAbs(), err)
 		return nil, syscall.EIO // Return an appropriate FUSE error (I/O error)
 	}
-	log.Printf("NFS Read OK: Read %d bytes for '%s'", len(nfsData), n.relPath())
+	log.Printf("NFS_READ: Read %d bytes for '%s'", len(nfsData), n.relPath())
 
 	// 3. Write the file to the cache with the same permissions it has in FUSE/NFS.
 	if err := n.FS.ssdCache.Put(n.relPath(), nfsData, n.Mode); err == ErrWontCache {
@@ -96,7 +96,7 @@ func (n *fuseFSNode) data() ([]byte, error) {
 	} else if err != nil {
 		log.Printf("ERROR: Failed to write to cache %s: %v. Proceeding without caching.", n.relPath(), err)
 	} else {
-		log.Printf("CACHED: Copied '%s' from NFS to cache", n.relPath())
+		log.Printf("CACHE_LOADED: Copied '%s' from NFS to cache", n.relPath())
 	}
 
 	return nfsData, nil

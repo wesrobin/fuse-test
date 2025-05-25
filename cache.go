@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -119,13 +120,14 @@ func (s *sizeLimitedCache) Put(path string, data []byte, mode os.FileMode) error
 	return nil
 }
 
-func NewLRUCache(path string, capacity int) Cache {
+func NewLRUCache(path string, capacity int, debug bool) Cache {
 	if capacity == 0 {
 		log.Fatalf("FATAL: LRU cache initialised with 0 capacity")
 	}
 	return &lruCache{
 		ssdBasePath: path,
 		capacity:    capacity,
+		debug:       debug,
 
 		isPresent: make(map[string]bool),
 	}
@@ -134,6 +136,7 @@ func NewLRUCache(path string, capacity int) Cache {
 type lruCache struct {
 	ssdBasePath string
 	capacity    int
+	debug       bool
 
 	cacheMu   sync.RWMutex
 	isPresent map[string]bool // Just use a map for easy lookup. We'll be fetching the file from ssd
@@ -153,6 +156,10 @@ func (lru *lruCache) Get(path string) ([]byte, error) {
 
 	_ = lru.promote(flatPath) // Not putting anything new in, ignore evicted
 
+	if lru.debug {
+		log.Printf("DEBUG: LRU cache updated, members: %v", lru.queue)
+	}
+
 	cachedData, err := os.ReadFile(filepath.Join(lru.ssdBasePath, flatPath))
 	if os.IsNotExist(err) {
 		// An error other than "file not found" occurred when reading from SSD.
@@ -171,16 +178,23 @@ func (lru *lruCache) Put(path string, data []byte, mode os.FileMode) error {
 	// Write the file to SSD with the same permissions it has in FUSE/NFS.
 	flatPath := flattenDirPath(path)
 	fileName := filepath.Join(lru.ssdBasePath, flatPath)
-	if err := os.WriteFile(fileName, data, mode); err != nil {
+	if err := os.WriteFile(fileName, data, perm_READWRITEEXECUTE); err != nil {
 		return err
 	}
+	lru.isPresent[flatPath] = true
 
 	// Promote or add the new path to the back of the lru
 	evicted := lru.promote(flatPath)
 	if evicted != nil {
+		// Need to delete the file and update map
+		if err := os.RemoveAll(fileName); err != nil && !os.IsNotExist(err) {
+			// TODO(wes): This being fatal is bad, we should rather attempt delete and only remove from queue & map if necessary
+			log.Fatalf("Failed to remove existing file %s: %v", fileName, err)
+		}
 		delete(lru.isPresent, *evicted)
-	} else {
-		lru.isPresent[flatPath] = true
+	}
+	if lru.debug {
+		log.Printf("LRU_DEBUG: LRU cache updated, members: %v", lru.queue)
 	}
 
 	return nil
@@ -206,10 +220,9 @@ func (lru *lruCache) promote(key string) *string {
 
 	if foundIdx != -1 {
 		// Remove the key from its current position
-		// This operation is O(N) where N is current cache size
-		lru.queue = append(lru.queue[:foundIdx], lru.queue[foundIdx+1:]...)
+		lru.queue = slices.Delete(lru.queue, foundIdx, foundIdx+1)
 	}
-	// Add the key to the back (MRU position)
+	// Add the key to the back (most recently used position)
 	lru.queue = append(lru.queue, key)
 
 	var evicted *string

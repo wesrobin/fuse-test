@@ -37,7 +37,7 @@ func main() {
 		log.Fatalf("FATAL: Could not find SSD path '%s'", absSSDDir)
 	}
 
-	cache := NewSizeLimitedCache(absSSDDir, 60)
+	cache := NewLRUCache(absSSDDir, 2, true)
 
 	fuseFS := NewFS(mountPoint, nfsDir, ssdDir, cache)
 
