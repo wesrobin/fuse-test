@@ -68,7 +68,7 @@ func (rfs *fuseFS) Mount() error {
 }
 
 func (rfs *fuseFS) Serve() error {
-	server := fs.New(rfs.conn, &fs.Config{Debug: func(msg interface{}) { log.Printf("SERVER_DEBUG: '%v'", msg) }})
+	server := fs.New(rfs.conn, &fs.Config{Debug: func(msg any) { log.Printf("SERVER_DEBUG: '%v'", msg) }})
 	return server.Serve(rfs)
 }
 

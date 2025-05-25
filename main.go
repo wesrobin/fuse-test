@@ -42,6 +42,18 @@ func main() {
 		}
 	}()
 
+	defer func() {
+        if r := recover(); r != nil {
+			// Possible we haven't unmounted yet
+			err := fuseFS.Unmount()
+			if err != nil {
+				log.Printf("Err from unmount '%v", err)
+			}
+            log.Fatalf("Recovered in f: %v", r)
+        }
+    }()
+
+
 	if err := fuseFS.Serve(); err != nil {
 		log.Fatalf("failed to serve: '%v'", err)
 	}
