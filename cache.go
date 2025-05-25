@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -33,7 +34,7 @@ type defaultCache struct {
 	ssdBasePath string
 }
 
-func (s *defaultCache) Get(path string) ([]byte, error) {
+func (d *defaultCache) Get(path string) ([]byte, error) {
 	flatPath := flattenDirPath(path)
 
 	cachedData, err := os.ReadFile(filepath.Join(s.ssdBasePath, flatPath))
@@ -47,7 +48,7 @@ func (s *defaultCache) Get(path string) ([]byte, error) {
 	return cachedData, nil
 }
 
-func (s *defaultCache) Put(path string, data []byte, mode os.FileMode) error {
+func (d *defaultCache) Put(path string, data []byte, mode os.FileMode) error {
 	// Write the file to SSD with the same permissions it has in FUSE/NFS.
 	flatPath := flattenDirPath(path)
 	fileName := filepath.Join(s.ssdBasePath, flatPath)
@@ -61,7 +62,7 @@ func NewSizeLimitedCache(ssdBasePath string, byteLimit int64) Cache {
 	return &sizeLimitedCache{
 		ssdBasePath: ssdBasePath,
 		byteLimit:   byteLimit,
-		cache:       make(map[string]bool),
+		isPresent:   make(map[string]bool),
 	}
 }
 
@@ -69,8 +70,8 @@ type sizeLimitedCache struct {
 	ssdBasePath          string
 	byteLimit, byteCount int64
 
-	cacheMu sync.RWMutex
-	cache   map[string]bool // Just use a map for easy lookup. We'll be fetching the file from ssd
+	cacheMu   sync.RWMutex
+	isPresent map[string]bool // Just use a map for easy lookup. We'll be fetching the file from ssd
 }
 
 func (s *sizeLimitedCache) Get(path string) ([]byte, error) {
@@ -79,7 +80,7 @@ func (s *sizeLimitedCache) Get(path string) ([]byte, error) {
 
 	flatPath := flattenDirPath(path)
 
-	if !s.cache[flatPath] {
+	if !s.isPresent[flatPath] {
 		return nil, ErrNotFoundCache
 	}
 
@@ -94,6 +95,8 @@ func (s *sizeLimitedCache) Get(path string) ([]byte, error) {
 	return cachedData, nil
 }
 
+// Put will overwrite any existing data. Not great for huge files, but it (currently) isn't called
+// before first running a Get.
 func (s *sizeLimitedCache) Put(path string, data []byte, mode os.FileMode) error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
@@ -110,44 +113,47 @@ func (s *sizeLimitedCache) Put(path string, data []byte, mode os.FileMode) error
 		return err
 	}
 
-	s.cache[flatPath] = true
+	s.isPresent[flatPath] = true
 	s.byteCount += dataLen
 
 	return nil
 }
 
-func NewLRUCache(path string, queueLen int) Cache {
+func NewLRUCache(path string, capacity int) Cache {
+	if capacity == 0 {
+		log.Fatalf("FATAL: LRU cache initialised with 0 capacity")
+	}
 	return &lruCache{
 		ssdBasePath: path,
-		queueLimit:  queueLen,
+		capacity:    capacity,
 
 		isPresent: make(map[string]bool),
-		// Zero value for queue is fine
 	}
 }
 
 type lruCache struct {
 	ssdBasePath string
-	queueLimit  int
+	capacity    int
 
 	cacheMu   sync.RWMutex
 	isPresent map[string]bool // Just use a map for easy lookup. We'll be fetching the file from ssd
-	queue     []string
+	queueMu   sync.Mutex
+	queue     []string // A doubly-linked list has better performance for write operations, but Go doesn't have good support for one
 }
 
-func (s *lruCache) Get(path string) ([]byte, error) {
-	s.cacheMu.RLock()
-	defer s.cacheMu.RUnlock()
+func (lru *lruCache) Get(path string) ([]byte, error) {
+	lru.cacheMu.RLock()
+	defer lru.cacheMu.RUnlock()
 
 	flatPath := flattenDirPath(path)
 
-	if !s.isPresent[flatPath] {
+	if !lru.isPresent[flatPath] {
 		return nil, ErrNotFoundCache
 	}
 
-	// TODO(wes): Update queue
+	_ = lru.promote(flatPath) // Not putting anything new in, ignore evicted
 
-	cachedData, err := os.ReadFile(filepath.Join(s.ssdBasePath, flatPath))
+	cachedData, err := os.ReadFile(filepath.Join(lru.ssdBasePath, flatPath))
 	if os.IsNotExist(err) {
 		// An error other than "file not found" occurred when reading from SSD.
 		return nil, ErrNotFoundCache
@@ -158,18 +164,60 @@ func (s *lruCache) Get(path string) ([]byte, error) {
 	return cachedData, nil
 }
 
-func (s *lruCache) Put(path string, data []byte, mode os.FileMode) error {
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
+func (lru *lruCache) Put(path string, data []byte, mode os.FileMode) error {
+	lru.cacheMu.Lock()
+	defer lru.cacheMu.Unlock()
 
 	// Write the file to SSD with the same permissions it has in FUSE/NFS.
 	flatPath := flattenDirPath(path)
-	fileName := filepath.Join(s.ssdBasePath, flatPath)
+	fileName := filepath.Join(lru.ssdBasePath, flatPath)
 	if err := os.WriteFile(fileName, data, mode); err != nil {
 		return err
 	}
 
-	// TODO(wes): Update queue
+	// Promote or add the new path to the back of the lru
+	evicted := lru.promote(flatPath)
+	if evicted != nil {
+		delete(lru.isPresent, *evicted)
+	} else {
+		lru.isPresent[flatPath] = true
+	}
 
 	return nil
+}
+
+// promote updates the key in the queue
+// If the key is present in the queue, it will move it to the back (most recently used position).
+// If the key is not present in the queue, it will add it to the back.
+// If a new key is added and the queue length >= capacity, the front key (least recently used) will
+// evicted and returned.
+// The returned key will be nil if no key was evicted.
+func (lru *lruCache) promote(key string) *string {
+	lru.queueMu.Lock()
+	defer lru.queueMu.Unlock()
+
+	foundIdx := -1
+	for i, k := range lru.queue {
+		if k == key {
+			foundIdx = i
+			break
+		}
+	}
+
+	if foundIdx != -1 {
+		// Remove the key from its current position
+		// This operation is O(N) where N is current cache size
+		lru.queue = append(lru.queue[:foundIdx], lru.queue[foundIdx+1:]...)
+	}
+	// Add the key to the back (MRU position)
+	lru.queue = append(lru.queue, key)
+
+	var evicted *string
+	if len(lru.queue) > lru.capacity {
+		// Need to evict
+		evictee := lru.queue[0]
+		lru.queue = lru.queue[1:]
+		evicted = &evictee
+	}
+	return evicted // nil if none evicted
 }
