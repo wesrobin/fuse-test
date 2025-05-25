@@ -24,11 +24,14 @@ type FuseFS interface {
 func NewFS(mountpoint, nfsDir string) FuseFS {
 	rfs := &fuseFS{mountpoint: mountpoint, lastInode: 1}
 
-	rootNFSNode := &fuseFSNode{
-		FS:    rfs,
-		Inode: 1,
-		Mode:  os.ModeDir | 0o555,
-	}
+	rootNFSNode := NewFuseFSNode(
+		rfs,
+		"",
+		mountpoint,
+		rfs.GenerateInode(0, ""),
+		os.ModeDir|0o555,
+		true,
+	)
 	rfs.rootNFSNode = rootNFSNode
 
 	err := loadFSTree(nfsDir, rootNFSNode)
@@ -140,27 +143,18 @@ func loadFSTree(nfsDirPath string, root *fuseFSNode) error {
 			mode = 0o555
 		}
 
-		currentNode := &fuseFSNode{
-			FS:    root.FS,
-			Name:  d.Name(),
-			Inode: root.FS.GenerateInode(parent.Inode, d.Name()),
-			Mode:  mode,
-			isDir: d.IsDir(),
-		}
+		currentNode := NewFuseFSNode(
+			root.FS,
+			d.Name(),
+			parentPath,
+			root.FS.GenerateInode(parent.Inode, d.Name()),
+			mode,
+			d.IsDir(),
+		)
 
 		if d.IsDir() {
-			// It's a directory, its Data is nil.
 			// Add to nodesByPath so its children can find it.
 			nodesByPath[path] = currentNode
-		} else {
-			// It's a file, read its content.
-			fileData, readErr := os.ReadFile(path)
-			if readErr != nil {
-				log.Printf("Failed to read file %s: '%v'. Skipping content.\n", path, readErr)
-				currentNode.Data = nil
-			} else {
-				currentNode.Data = fileData
-			}
 		}
 
 		// Add current node to its parent's children list
