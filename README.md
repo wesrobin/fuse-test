@@ -80,7 +80,7 @@ NOTE: If you see the following error:
 ```bash
 ERROR: Failed to write to cache project-1/main.py: open /workspaces/cerebrium-test/ssd/project-1$main.py: permission denied. Proceeding without caching.
 ```
-it's because you need to rebuild the directory structure (just run `build.sh`). Annoying I know.
+it's because you need to rebuild the directory structure (just run `build.sh` after unmounting the drive). Annoying I know.
 
 1. **Files are mounted and readable, and runs python file**
 ```bash
