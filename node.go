@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	native_fs "io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -61,22 +63,19 @@ func (n *fuseFSNode) data() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	} else if fi.IsDir() {
-		// TODO(wes): Return err
-		return nil, nil
+		return nil, syscall.EISDIR
 	}
 
-	// TODO(wes): Return actual data
-	/*
-	   // It's a file, read its content.
-	   fileData, readErr := os.ReadFile(path)
-	   if readErr != nil {
-	       log.Printf("Failed to read file %s: '%v'. Skipping content.\n", path, readErr)
-	       currentNode.Data = nil
-	   } else {
-	       currentNode.Data = fileData
-	   }
-	*/
-	return make([]byte, fi.Size()), nil
+	time.Sleep(nfsFileReadDelay)
+
+	// It's a file, read its content.
+	path := n.path()
+	fileData, readErr := os.ReadFile(path)
+	if readErr != nil {
+		log.Printf("Failed to read file %s: '%v'. Skipping content.\n", path, readErr)
+		return nil, syscall.EIO
+	}
+	return fileData, nil
 }
 
 func (n *fuseFSNode) Attr(ctx context.Context, attr *fuse.Attr) error {

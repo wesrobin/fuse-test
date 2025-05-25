@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	_ "bazil.org/fuse/fs/fstestutil"
 )
@@ -14,6 +15,11 @@ const (
 	mountPoint = "./mnt/all-projects"
 	nfsDir     = "./nfs" // Path to our simulated NFS directory
 	ssdDir     = "./ssd" // Path to our simulated SSD cache directory
+
+	nfsFileReadDelay = time.Millisecond
+
+	perm_READEXECUTE = 0o555
+	perm_READ        = 0o444
 )
 
 func main() {
@@ -56,46 +62,6 @@ func main() {
 	if err := fuseFS.Serve(); err != nil {
 		log.Fatalf("failed to serve: '%v'", err)
 	}
-
-	// c, err := fuse.Mount(
-	// 	mountPoint,
-	// 	fuse.FSName("cachingfs"),
-	// 	fuse.Subtype("cachefs"),
-	// 	// fuse.AsyncRead(), // Can add for concurrent reads
-	// )
-	// if err != nil {
-	// 	log.Fatalf("Initialising FUSE connection to dir %s: %v", mountPoint, err)
-	// }
-	// sigChan := make(chan os.Signal, 1)
-	// signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM)
-	// go func() {
-	// 	<-sigChan
-	// 	err := c.Close()
-	// 	if err != nil {
-	// 		log.Fatalf("Closing FUSE connection to dir %s: %v", mountPoint, err)
-	// 	}
-	// 	log.Printf("Closed fuse connection to %s", mountPoint)
-
-	// 	if err = fuse.Unmount(mountPoint); err != nil {
-	// 		log.Fatalf("failed to unmount: %w", err)
-	// 	}
-	// 	log.Printf("Unmounted filesystem from %s", mountPoint)
-	// }()
-
-	// log.Println("Filesystem mounted. Ctrl+C to unmount and exit.")
-
-	// log.Println("Initial NFS file structure created.")
-
-	// log.Printf("DEBUG main: absNFSPath = '%s', absSSDPath = '%s'", absNFS, absSSD)
-
-	// fuseFS := NewFS(absNFS, absSSD)
-
-	// fsSrv := fs.New(c, &fs.Config{Debug: func(msg interface{}) { log.Printf("SERVER_DEBUG: '%v'", msg) }})
-
-	// err = fsSrv.Serve(fuseFS)
-	// if err != nil {
-	// 	log.Fatalf("Serve failed: %v", err)
-	// }
 }
 
 // TODO(wes): Bubble errs up

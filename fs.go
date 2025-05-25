@@ -50,6 +50,7 @@ func (rfs *fuseFS) Mount() error {
 		rfs.mountpoint,
 		fuse.FSName("fusefs"),
 		fuse.Subtype("fusefs"),
+		fuse.ReadOnly(),
 	)
 	if err != nil {
 		return err
@@ -60,7 +61,13 @@ func (rfs *fuseFS) Mount() error {
 }
 
 func (rfs *fuseFS) Serve() error {
-	server := fs.New(rfs.conn, &fs.Config{Debug: func(msg any) { log.Printf("SERVER_DEBUG: '%v'", msg) }})
+	server := fs.New(
+		rfs.conn,
+		&fs.Config{
+			Debug: func(msg any) {
+				log.Printf("S_DEBUG: '%v'", msg)
+			},
+		})
 	return server.Serve(rfs)
 }
 
@@ -107,7 +114,7 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 		"",
 		nfsDir,
 		fs.GenerateInode(0, ""),
-		os.ModeDir|0o555,
+		os.ModeDir|perm_READ,
 		true,
 	)
 
@@ -139,9 +146,9 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 			return fmt.Errorf("parent node not found for path: %s (parent: %s)", path, parentPath)
 		}
 
-		mode := os.ModeDir | 0o555
+		mode := os.ModeDir | perm_READEXECUTE
 		if !d.IsDir() {
-			mode = 0o555
+			mode = perm_READEXECUTE
 		}
 
 		currentNode := NewFuseFSNode(
