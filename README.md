@@ -229,5 +229,7 @@ The file system is designed as a read-only layer that sits on top of an existing
 * I think seprarting File and Dir types that implement the fs.Node interface would be preferable. There's a bunch of `if isDir` checks in the code, this could be easily avoided.
 * Error handling could be better. Most of the time, errors are just bubbled up to the FUSE server. Greater care should be taken to map errors to linux error codes. In most obvious cases, I have done this, but it still feels a little half-baked.
 * Logging is verbose and annoying. I've tried to turn most of the logging off by putting it behind flags. A proper logger like [zap](https://github.com/uber-go/zap) would be far better.
+   * Generally speaking there may be some great libraries that I've overlooked here, like for caching perhaps? Viper would have been amazing too, just didn't get around to it.
+   * basil/fuse _is_ nice in how it allows you to implement only the interfaces you need, but it doesn't look like it's being maintained and there are a number of open issues.
 
 Also, shoutout to [https://github.com/goamaral/fuse-filesystem](https://github.com/goamaral/fuse-filesystem), whoever you are!
