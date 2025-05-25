@@ -25,6 +25,8 @@ const (
 )
 
 var (
+	// *** Flag definitions ***
+
 	// ** Cache specific **
 	cache       = flag.String("cache", "default", "Define which cache to use (size, lru). If not specified, default cache is used.\n EXAMPLE: --cache=lru")
 	lruCapacity = flag.Int("lrucap", 2, "Define the capacity of the LRU cache. Only used when --cache=lru is set.")
@@ -43,7 +45,7 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	ensureDirs(mountPoint, nfsDir, ssdDir)
+	// ensureDirs(mountPoint, nfsDir, ssdDir)
 
 	log.Printf("Mount point at %s", mountPoint)
 	log.Printf("NFS source (relative): %s", nfsDir)
