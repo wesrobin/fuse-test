@@ -67,33 +67,10 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
 
 ## Usage Examples
 
-The application accepts several command-line flags to configure its behavior:
-
-* **Default:**
-    Uses a basic cache that stores _all_ accessed files in the SSD directory.
-    ```bash
-    ./fuse-test
-    ```
-
-* **Using LRU Cache:**
-    Run with an LRU cache with a capacity of 5 items and enable LRU debugging messages.
-    ```bash
-    ./fuse-test --cache=lru --lrucap=5 --lrudebug
-    ```
-   
-
-* **Using Size-Limited Cache:**
-    Run with a cache that limits the total size of cached files to 256MB (value is in bytes).
-    ```bash
-    ./fuse-test -cache=size -sizelim=268435456 # 256 MB in bytes
-    ```
-    The default `-sizelim` is 128 bytes (useful for testing).
-
-* **Enable FUSE Server Debugging:**
-    This can be combined with any cache type to see detailed FUSE operation logs.
-    ```bash
-    ./fuse-test -sdebug
-    ```
+The application accepts several command-line flags to configure its behavior. You can view flag options and defaults like:
+```bash
+./fuse-test -help
+```
    
 ## Testing
 
@@ -103,6 +80,7 @@ For these tests, `./build.sh` with default source directory. Each test is a seri
 ```bash
 <terminal 1>
 ./fuse-test
+
 <terminal 2>
 cd mnt/all-projects
 ls -R # Lists the entire directory with subfolders and files
@@ -117,6 +95,7 @@ python project-1/main.py # Should work provided python is installed, will be slo
 ```bash
 <terminal 1>
 ./fuse-test -cache=size -sizelim=64 # 64 bytes will be enough for some files, not for others. It will never be enough for 2.
+
 <terminal 2>
 cd mnt/all-projects
 cat project-1/common-lib.py # 72 bytes, too big for our cache
@@ -133,6 +112,7 @@ cat another-folder/text-file.txt # 47 bytes so small enough for our cache, but i
 ```bash
 <terminal 1>
 ./fuse-test -cache=lru -lrucap=2 -lrudebug # 2 files in cache at any one time, evicted by LRU
+
 <terminal 2>
 cd mnt/all-projects
 cat project-1/common-lib.py # Cached
