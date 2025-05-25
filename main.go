@@ -16,10 +16,11 @@ const (
 	nfsDir     = "./nfs" // Path to our simulated NFS directory
 	ssdDir     = "./ssd" // Path to our simulated SSD cache directory
 
-	nfsFileReadDelay = time.Millisecond
+	nfsFileReadDelay = time.Millisecond * 500
 
-	perm_READEXECUTE = 0o555
-	perm_READ        = 0o444
+	perm_READWRITEEXECUTE = 0o700
+	perm_READEXECUTE      = 0o500
+	perm_READ             = 0o400
 )
 
 func main() {
@@ -58,34 +59,58 @@ func main() {
 		}
 	}()
 
-	if err := fuseFS.Serve(); err != nil {
+	if err := fuseFS.Serve(false); err != nil {
 		log.Fatalf("failed to serve: '%v'", err)
 	}
 }
 
 // TODO(wes): Bubble errs up
 func ensureDirs(mount, nfs, ssd string) {
-	if err := os.MkdirAll(mount, 0755); err != nil {
+	if err := os.RemoveAll(mount); err != nil && !os.IsNotExist(err) {
+		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
+	}
+	if err := os.MkdirAll(mount, perm_READWRITEEXECUTE); err != nil {
 		log.Fatalf("Creating mount point %s: %v", mount, err)
 	}
 	log.Printf("Mount created: %s", mount)
 
 	// Create nfsPath and ssdPath if they don't exist for initial setup
-	if err := os.MkdirAll(nfs, 0755); err != nil {
+	if err := os.RemoveAll(nfs); err != nil && !os.IsNotExist(err) {
+		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
+	}
+	if err := os.MkdirAll(nfs, perm_READWRITEEXECUTE); err != nil {
 		log.Fatalf("Creating NFS path %s: %v", nfs, err)
 	}
 	log.Printf("NFS source: %s", nfsDir)
 
-	if err := os.MkdirAll(ssd, 0755); err != nil {
+	if err := os.RemoveAll(ssd); err != nil && !os.IsNotExist(err) {
+		log.Fatalf("Failed to remove existing mountpoint %s: %v", mount, err)
+	}
+	if err := os.MkdirAll(ssd, perm_READWRITEEXECUTE); err != nil {
 		log.Fatalf("Creating SSD path %s: %v", ssd, err)
 	}
 	log.Printf("SSD cache: %s", ssdDir)
 
-	_ = os.MkdirAll(filepath.Join(nfs, "/project-1"), 0755)
-	_ = os.WriteFile(filepath.Join(nfs, "/project-1/main.py"), []byte("# project-1 main.py\nprint('Hello from project-1 main')"), 0644)
-	_ = os.WriteFile(filepath.Join(nfs, "/project-1/common-lib.py"), []byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"), 0644)
+	_ = os.MkdirAll(
+		filepath.Join(nfs, "/project-1"),
+		perm_READWRITEEXECUTE)
+	_ = os.WriteFile(
+		filepath.Join(nfs, "/project-1/main.py"),
+		[]byte("# project-1 main.py\nprint('Hello from project-1 main')"),
+		perm_READWRITEEXECUTE)
+	_ = os.WriteFile(
+		filepath.Join(nfs, "/project-1/common-lib.py"),
+		[]byte("# common-lib.py in project-1\nprint('Hello from common-lib in project-1')"),
+		perm_READWRITEEXECUTE)
 
-	_ = os.MkdirAll(filepath.Join(nfs, "/project-2"), 0755)
-	_ = os.WriteFile(filepath.Join(nfs, "/project-2/entrypoint.py"), []byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"), 0644)
-	_ = os.WriteFile(filepath.Join(nfs, "/project-2/common-lib.py"), []byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"), 0644)
+	_ = os.MkdirAll(
+		filepath.Join(nfs, "/project-2"), perm_READWRITEEXECUTE)
+	_ = os.WriteFile(
+		filepath.Join(nfs, "/project-2/entrypoint.py"),
+		[]byte("# project-2 entrypoint.py\nprint('Hello from project-2 entrypoint')"),
+		perm_READWRITEEXECUTE)
+	_ = os.WriteFile(
+		filepath.Join(nfs, "/project-2/common-lib.py"),
+		[]byte("# common-lib.py in project-2\nprint('Hello from common-lib in project-2')"),
+		perm_READWRITEEXECUTE)
 }

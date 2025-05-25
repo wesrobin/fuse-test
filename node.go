@@ -32,7 +32,6 @@ func NewFuseFSNode(fs *fuseFS, name, parentPathRel string, inode uint64, mode os
 	return &fuseFSNode{
 		FS:            fs,
 		Name:          name,
-		parentPath:    parentPathRel,
 		parentPathRel: parentPathRel,
 		Inode:         inode,
 		Mode:          mode,
@@ -43,7 +42,6 @@ func NewFuseFSNode(fs *fuseFS, name, parentPathRel string, inode uint64, mode os
 type fuseFSNode struct {
 	FS            *fuseFS
 	Name          string
-	parentPath    string
 	parentPathRel string // Relative to NFS/SSD base
 	Inode         uint64
 	Mode          os.FileMode
@@ -52,21 +50,20 @@ type fuseFSNode struct {
 	Children []*fuseFSNode // nil for files
 }
 
-func (n *fuseFSNode) path() string {
-	return filepath.Join(n.parentPath, n.Name)
+func (n *fuseFSNode) relPath() string {
+	return filepath.Join(n.parentPathRel, n.Name)
 }
 
-func (n *fuseFSNode) nfsPath() string {
+func (n *fuseFSNode) nfsPathAbs() string {
 	return filepath.Join(n.FS.nfsBaseAbs, n.parentPathRel, n.Name)
 }
 
-func (n *fuseFSNode) ssdPath() string {
-	return filepath.Join(n.FS.nfsBaseAbs, n.parentPathRel, n.Name)
+func (n *fuseFSNode) ssdPathAbs() string {
+	return filepath.Join(n.FS.ssdBaseAbs, flattenDirPath(n.relPath()))
 }
 
 func (n *fuseFSNode) stat() (native_fs.FileInfo, error) {
-	return os.Stat(n.path())
-	// return os.Stat(n.nfsPath()) // NFS is source of truth
+	return os.Stat(n.nfsPathAbs()) // NFS is source of truth
 }
 
 func (n *fuseFSNode) data() ([]byte, error) {
@@ -77,16 +74,34 @@ func (n *fuseFSNode) data() ([]byte, error) {
 		return nil, syscall.EISDIR
 	}
 
+	// 1. Try reading from SSD cache
+	cachedData, err := os.ReadFile(n.ssdPathAbs())
+	if err == nil {
+		log.Printf("CACHE HIT: Read %d bytes from SSD for '%s'", len(cachedData), n.relPath())
+		return cachedData, nil
+	}
+	if !os.IsNotExist(err) {
+		// An error other than "file not found" occurred when reading from SSD.
+		log.Printf("WARNING: Error reading from SSD cache for %s (will try NFS): %v", n.ssdPathAbs(), err)
+	}
+
 	time.Sleep(nfsFileReadDelay)
 
-	// It's a file, read its content.
-	path := n.path()
-	fileData, readErr := os.ReadFile(path)
-	if readErr != nil {
-		log.Printf("Failed to read file %s: '%v'. Skipping content.\n", path, readErr)
-		return nil, syscall.EIO
+	nfsData, err := os.ReadFile(n.nfsPathAbs())
+	if err != nil {
+		log.Printf("ERROR: Failed to read from NFS path %s: %v", n.nfsPathAbs(), err)
+		return nil, syscall.EIO // Return an appropriate FUSE error (I/O error)
 	}
-	return fileData, nil
+	log.Printf("NFS Read OK: Read %d bytes for '%s'", len(nfsData), n.relPath())
+
+	// Write the file to SSD with the same permissions it has in FUSE/NFS.
+	if writeErr := os.WriteFile(n.ssdPathAbs(), nfsData, n.Mode); writeErr != nil {
+		log.Printf("ERROR: Failed to write to SSD cache %s: %v. Proceeding without caching.", n.ssdPathAbs(), writeErr)
+	} else {
+		log.Printf("CACHED: Copied '%s' from NFS to SSD '%s'", n.relPath(), n.ssdPathAbs())
+	}
+
+	return nfsData, nil
 }
 
 func (n *fuseFSNode) Attr(ctx context.Context, attr *fuse.Attr) error {
@@ -156,7 +171,7 @@ func printTree(n *fuseFSNode, indent string) {
 			contentInfo = fmt.Sprintf("%d bytes", fi.Size())
 		}
 	}
-	fmt.Printf("%s%s[%d] (%s: %s) -> %s\n", indent, n.Name, n.Inode, nodeType, contentInfo, n.path())
+	fmt.Printf("%s%s[%d] (%s: %s) -> %s\n", indent, n.Name, n.Inode, nodeType, contentInfo, n.relPath())
 
 	for _, child := range n.Children {
 		printTree(child, indent+"  ")

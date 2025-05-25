@@ -13,7 +13,7 @@ import (
 
 type FuseFS interface {
 	Mount() error
-	Serve() error
+	Serve(debug bool) error
 	Unmount() error
 	Mountpoint() string
 
@@ -80,14 +80,14 @@ func (rfs *fuseFS) Mount() error {
 	return nil
 }
 
-func (rfs *fuseFS) Serve() error {
-	server := fs.New(
-		rfs.conn,
-		&fs.Config{
-			Debug: func(msg any) {
+func (rfs *fuseFS) Serve(debug bool) error {
+	fsConf := new(fs.Config)
+	if debug {
+		fsConf.Debug = func(msg any) {
 				log.Printf("S_DEBUG: '%v'", msg)
-			},
-		})
+			}
+	}
+	server := fs.New(rfs.conn,fsConf)
 	return server.Serve(rfs)
 }
 
@@ -129,7 +129,7 @@ func loadFSTree(fs *fuseFS) (*fuseFSNode, error) {
 	nodesByRelPath := make(map[string]*fuseFSNode)
 	nodesByRelPath[""] = rootNFSNode
 
-	walkErr := filepath.WalkDir("", func(currentAbsNFSPath string, d native_fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(fs.nfsBaseAbs, func(currentAbsNFSPath string, d native_fs.DirEntry, err error) error {
 		if err != nil {
 			// This error is from filepath.WalkDir itself, e.g., permission denied to list a directory.
 			fmt.Printf("Error accessing path %q: %v. Skipping subtree.\n", currentAbsNFSPath, err)
@@ -146,6 +146,9 @@ func loadFSTree(fs *fuseFS) (*fuseFSNode, error) {
 
 		parentAbsNFSPath := filepath.Dir(currentAbsNFSPath)
 		parentRelPath, _ := filepath.Rel(fs.nfsBaseAbs, parentAbsNFSPath)
+		if parentRelPath == "." {
+			parentRelPath = "" // From immediate children in root, parent is reported as `.`
+		}
 
 		// Determine parent node
 		parent, ok := nodesByRelPath[parentRelPath]
@@ -170,7 +173,7 @@ func loadFSTree(fs *fuseFS) (*fuseFSNode, error) {
 
 		if d.IsDir() {
 			// Add to nodesByPath so its children can find it.
-			nodesByRelPath[parentRelPath] = currentNode
+			nodesByRelPath[currentNode.relPath()] = currentNode
 		}
 
 		// Add current node to its parent's children list
