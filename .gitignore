@@ -24,7 +24,10 @@ go.work.sum
 # env file
 .env
 
-# Excess files/folders
+# Generated files/folders
 nfs/
 ssd/
 mnt/
+
+# Generated Go binary
+fuse-test
