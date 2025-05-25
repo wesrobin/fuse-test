@@ -36,13 +36,13 @@ func NewFS(mountpoint, nfsDir, ssdDir string) FuseFS {
 	}
 
 	rfs := &fuseFS{
-		mountpoint: mountpoint, 
-		lastInode: 1,
+		mountpoint: mountpoint,
+		lastInode:  1,
 		nfsBaseAbs: absNFSDir,
 		ssdBaseAbs: absSSDDir,
 	}
 
-	rootNode, err := loadFSTree(nfsDir, rfs)
+	rootNode, err := loadFSTree(rfs)
 	if err != nil {
 		log.Fatalf("FATAL: Building FS: '%v'", err)
 	}
@@ -114,38 +114,25 @@ func (rfs *fuseFS) GenerateInode(_ uint64, _ string) uint64 {
 	return rfs.lastInode
 }
 
-func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
-	absRootDirPath, err := filepath.Abs(nfsDirPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for %s: %w", nfsDirPath, err)
-	}
-
-	rootInfo, err := os.Stat(absRootDirPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat root directory %s: %w", absRootDirPath, err)
-	}
-	if !rootInfo.IsDir() {
-		return nil, fmt.Errorf("root path %s is not a directory", absRootDirPath)
-	}
-
+func loadFSTree(fs *fuseFS) (*fuseFSNode, error) {
 	rootNFSNode := NewFuseFSNode(
 		fs,
 		"",
-		nfsDir,
+		"", // Relative to base NFS/SSD
 		fs.GenerateInode(0, ""),
 		os.ModeDir|perm_READ,
 		true,
 	)
 
-	// nodesByPath maps a directory's absolute path to its node object
+	// nodesByRelPath maps a directory's relative path to its node object
 	// This helps in finding the parent node for the current entry.
-	nodesByPath := make(map[string]*fuseFSNode)
-	nodesByPath[absRootDirPath] = rootNFSNode
+	nodesByRelPath := make(map[string]*fuseFSNode)
+	nodesByRelPath[""] = rootNFSNode
 
-	walkErr := filepath.WalkDir(absRootDirPath, func(path string, d native_fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir("", func(currentAbsNFSPath string, d native_fs.DirEntry, err error) error {
 		if err != nil {
 			// This error is from filepath.WalkDir itself, e.g., permission denied to list a directory.
-			fmt.Printf("Error accessing path %q: %v. Skipping subtree.\n", path, err)
+			fmt.Printf("Error accessing path %q: %v. Skipping subtree.\n", currentAbsNFSPath, err)
 			if d != nil && d.IsDir() {
 				return native_fs.SkipDir // Skip processing this directory further
 			}
@@ -153,16 +140,18 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 		}
 
 		// Skip the root directory itself in the callback, as we've already created its node.
-		if path == absRootDirPath {
+		if currentAbsNFSPath == fs.nfsBaseAbs {
 			return nil
 		}
 
+		parentAbsNFSPath := filepath.Dir(currentAbsNFSPath)
+		parentRelPath, _ := filepath.Rel(fs.nfsBaseAbs, parentAbsNFSPath)
+
 		// Determine parent node
-		parentPath := filepath.Dir(path)
-		parent, ok := nodesByPath[parentPath]
+		parent, ok := nodesByRelPath[parentRelPath]
 		if !ok {
 			// This should ideally not happen if WalkDir processes parents before children.
-			return fmt.Errorf("parent node not found for path: %s (parent: %s)", path, parentPath)
+			return fmt.Errorf("parent node not found for path: %s (parent: %s)", currentAbsNFSPath, parentRelPath)
 		}
 
 		mode := os.ModeDir | perm_READEXECUTE
@@ -173,7 +162,7 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 		currentNode := NewFuseFSNode(
 			fs,
 			d.Name(),
-			parentPath,
+			parentRelPath,
 			fs.GenerateInode(parent.Inode, d.Name()),
 			mode,
 			d.IsDir(),
@@ -181,7 +170,7 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 
 		if d.IsDir() {
 			// Add to nodesByPath so its children can find it.
-			nodesByPath[path] = currentNode
+			nodesByRelPath[parentRelPath] = currentNode
 		}
 
 		// Add current node to its parent's children list
@@ -191,7 +180,7 @@ func loadFSTree(nfsDirPath string, fs FuseFS) (*fuseFSNode, error) {
 	})
 
 	if walkErr != nil {
-		return nil, fmt.Errorf("error walking the path %s: %w", absRootDirPath, walkErr)
+		return nil, fmt.Errorf("error walking from root: %w", walkErr)
 	}
 
 	return rootNFSNode, nil

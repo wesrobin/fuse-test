@@ -29,8 +29,7 @@ func main() {
 	log.Printf("NFS source (relative): %s", nfsDir)
 	log.Printf("SSD cache (relative): %s", ssdDir)
 
-	fuseFS := NewFS(mountPoint, nfsDir)
-	_ = fuseFS
+	fuseFS := NewFS(mountPoint, nfsDir, ssdDir)
 
 	if err := fuseFS.Mount(); err != nil {
 		log.Fatalf("failed to mount: '%v'", err)

@@ -28,14 +28,15 @@ type FuseFSNode interface {
 	// fs.MakeDirer
 }
 
-func NewFuseFSNode(fs *fuseFS, name, parentPath string, inode uint64, mode os.FileMode, isDir bool) *fuseFSNode {
+func NewFuseFSNode(fs *fuseFS, name, parentPathRel string, inode uint64, mode os.FileMode, isDir bool) *fuseFSNode {
 	return &fuseFSNode{
-		FS:         fs,
-		Name:       name,
-		parentPath: parentPath,
-		Inode:      inode,
-		Mode:       mode,
-		isDir:      isDir,
+		FS:            fs,
+		Name:          name,
+		parentPath:    parentPathRel,
+		parentPathRel: parentPathRel,
+		Inode:         inode,
+		Mode:          mode,
+		isDir:         isDir,
 	}
 }
 
