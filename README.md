@@ -145,6 +145,41 @@ cd ../.. # IMPORTANT. If you don't cd out before stopping the go process, it wil
 ctr+C
 ```
 
+4. **Permissions**
+```bash
+<terminal 1>
+./build.sh
+./fuse-test
+
+<terminal 2>
+sudo useradd newuser
+sudo passwd newuser # Leave empty, I used “123”
+su - newuser # Enter password after prompt
+# Now you’re some random user. Confirm you can’t see the stuffs
+ls /workspaces/cerebrium-test/mnt/all-projects
+# Should fail with “ls: cannot open directory 'mnt/all-projects/': Permission denied”
+exit
+
+<terminal 1>
+ctr+C
+```
+
+5. **Read-only**
+```bash
+<terminal 1>
+./build.sh
+./fuse-test
+
+<terminal 2>
+rm -rf mnt/all-projects/project-1
+# Should fail with "rm: cannot remove 'mnt/all-projects/project-1/common-lib.py': Read-only file system" for both files
+touch mnt/all-projects/another-folder/test.txt
+# Should fail with "touch: cannot touch 'mnt/all-projects/another-folder/test.txt': Read-only file system"
+
+<terminal 1>
+ctr+C
+```
+
 ## File System Design
 
 The file system is designed as a read-only layer that sits on top of an existing directory structure (referred to as "NFS") and uses another directory ("SSD") for caching.
