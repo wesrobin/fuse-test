@@ -28,9 +28,9 @@ type FuseFSNode interface {
 	// fs.MakeDirer
 }
 
-func NewFuseFSNode(FS FuseFS, name, parentPath string, inode uint64, mode os.FileMode, isDir bool) *fuseFSNode {
+func NewFuseFSNode(fs *fuseFS, name, parentPath string, inode uint64, mode os.FileMode, isDir bool) *fuseFSNode {
 	return &fuseFSNode{
-		FS:         FS,
+		FS:         fs,
 		Name:       name,
 		parentPath: parentPath,
 		Inode:      inode,
@@ -40,12 +40,13 @@ func NewFuseFSNode(FS FuseFS, name, parentPath string, inode uint64, mode os.Fil
 }
 
 type fuseFSNode struct {
-	FS         FuseFS
-	Name       string
-	parentPath string
-	Inode      uint64
-	Mode       os.FileMode
-	isDir      bool
+	FS            *fuseFS
+	Name          string
+	parentPath    string
+	parentPathRel string // Relative to NFS/SSD base
+	Inode         uint64
+	Mode          os.FileMode
+	isDir         bool
 
 	Children []*fuseFSNode // nil for files
 }
@@ -54,8 +55,17 @@ func (n *fuseFSNode) path() string {
 	return filepath.Join(n.parentPath, n.Name)
 }
 
+func (n *fuseFSNode) nfsPath() string {
+	return filepath.Join(n.FS.nfsBaseAbs, n.parentPathRel, n.Name)
+}
+
+func (n *fuseFSNode) ssdPath() string {
+	return filepath.Join(n.FS.nfsBaseAbs, n.parentPathRel, n.Name)
+}
+
 func (n *fuseFSNode) stat() (native_fs.FileInfo, error) {
 	return os.Stat(n.path())
+	// return os.Stat(n.nfsPath()) // NFS is source of truth
 }
 
 func (n *fuseFSNode) data() ([]byte, error) {

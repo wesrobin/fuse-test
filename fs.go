@@ -21,15 +21,33 @@ type FuseFS interface {
 	fs.FSInodeGenerator
 }
 
-func NewFS(mountpoint, nfsDir string) FuseFS {
-	rfs := &fuseFS{mountpoint: mountpoint, lastInode: 1}
+func NewFS(mountpoint, nfsDir, ssdDir string) FuseFS {
+	absNFSDir, err := filepath.Abs(nfsDir)
+	if err != nil {
+		log.Fatalf("FATAL: Invalid NFS relative path '%s'", nfsDir)
+	} else if _, err := os.Stat(absNFSDir); err != nil {
+		log.Fatalf("FATAL: Could not find NFS path '%s'", absNFSDir)
+	}
+	absSSDDir, err := filepath.Abs(ssdDir)
+	if err != nil {
+		log.Fatalf("FATAL: Invalid SSD relative path '%s'", ssdDir)
+	} else if _, err := os.Stat(absSSDDir); err != nil {
+		log.Fatalf("FATAL: Could not find SSD path '%s'", absSSDDir)
+	}
+
+	rfs := &fuseFS{
+		mountpoint: mountpoint, 
+		lastInode: 1,
+		nfsBaseAbs: absNFSDir,
+		ssdBaseAbs: absSSDDir,
+	}
 
 	rootNode, err := loadFSTree(nfsDir, rfs)
 	if err != nil {
 		log.Fatalf("FATAL: Building FS: '%v'", err)
 	}
 
-	rfs.rootNFSNode = rootNode
+	rfs.rootNode = rootNode
 
 	printTree(rootNode, "")
 
@@ -40,8 +58,10 @@ type fuseFS struct {
 	mountpoint string
 	lastInode  uint64 // TODO(wes): Atomic?
 	conn       *fuse.Conn
+	nfsBaseAbs string
+	ssdBaseAbs string
 
-	rootNFSNode FuseFSNode
+	rootNode FuseFSNode // TODO(wes): Should this rather be a map[path]node?
 	// Add SSD here
 }
 
@@ -84,13 +104,12 @@ func (rfs *fuseFS) Mountpoint() string {
 	return rfs.mountpoint
 }
 
-/* fs.FS */
 func (rfs *fuseFS) Root() (fs.Node, error) {
-	return rfs.rootNFSNode, nil
+	return rfs.rootNode, nil
 }
 
-/* fs.FSInodeGenerator */
-func (rfs *fuseFS) GenerateInode(parentInode uint64, _ string) uint64 {
+// GenerateInode keeps a global fs counter and just increments it for simplicity
+func (rfs *fuseFS) GenerateInode(_ uint64, _ string) uint64 {
 	rfs.lastInode++
 	return rfs.lastInode
 }
