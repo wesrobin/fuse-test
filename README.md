@@ -55,7 +55,7 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
     cd ./mnt/all-projects
     ls -R
     cat <some-file-from-your-nfs-source>
-    python <some-file>.py
+    python <some-file>.py # Runs the file.
     ```
 
 7.  **Unmount the file system:**
@@ -69,8 +69,8 @@ Disclaimer, an LLM wrote this, so it is very wordy. Sorry.
 
 The application accepts several command-line flags to configure its behavior:
 
-* **Default (no cache specific flags):**
-    Uses a basic cache that stores all accessed files in the SSD directory.
+* **Default:**
+    Uses a basic cache that stores _all_ accessed files in the SSD directory.
     ```bash
     ./fuse-test
     ```
@@ -95,6 +95,54 @@ The application accepts several command-line flags to configure its behavior:
     ./fuse-test -sdebug
     ```
    
+## Testing
+
+For these tests, `./build.sh` with default source directory. Each test is a series of commands to run.
+
+1. **Files are mounted and readable, and runs python file**
+```bash
+<terminal 1>
+./fuse-test
+<terminal 2>
+cd mnt/all-projects
+ls -R # Lists the entire directory with subfolders and files
+cat another-folder/text-file.txt # Prints out text. This should be slow (1s delay)
+# Check terminal 1 to ensure that another-folder$text-file.txt has been cached
+cat another-folder/text-file.txt # File should be cached, read should be instant
+python project-1/main.py # Should work provided python is installed, will be slow (1s delay).
+# Check terminal 1 to ensure caching again.
+```
+
+2. **Artificial size limit**
+```bash
+<terminal 1>
+./fuse-test -cache=size -sizelim=64 # 64 bytes will be enough for some files, not for others. It will never be enough for 2.
+<terminal 2>
+cd mnt/all-projects
+cat project-1/common-lib.py # 72 bytes, too big for our cache
+# In terminal 1, check that the cache has rejected the file
+cat project-1/common-lib.py # Should still be slow
+cat project-1/main.py # 54 bytes, we can cache
+# In terminal 1, check that the file has been cached
+cat project-1/main.py # Should be instant
+cat another-folder/text-file.txt # 47 bytes so small enough for our cache, but it will be rejected because cache is full
+# In terminal 1, check that the cache has rejected the file
+```
+
+3. **LRU Cache**
+```bash
+<terminal 1>
+./fuse-test -cache=lru -lrucap=2 -lrudebug # 2 files in cache at any one time, evicted by LRU
+<terminal 2>
+cd mnt/all-projects
+cat project-1/common-lib.py # Cached
+# In terminal 1, check that the file has been cached
+cat project-1/common-lib.py # Should be instant
+cat project-1/main.py # Cached
+# In terminal 1, check that the file has been cached. Look for LRU_DEBUG log to verify the order is: [common-lib.py main.py]
+cat another-folder/text-file.txt # Cached, and cache should evict common-lib.py
+# In terminal 1, check that the file has been cached, and order is: [main.py, text-file.txt]
+```
 
 ## File System Design
 
