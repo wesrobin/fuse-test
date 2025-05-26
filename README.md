@@ -81,7 +81,7 @@ NOTE: If you see the following error:
 ```bash
 ERROR: Failed to write to cache project-1/main.py: open /workspaces/fuse-test/ssd/<path$file_name>: permission denied. Proceeding without caching.
 ```
-it's because you need to rebuild the directory structure (just run `build.sh` after unmounting the drive). Annoying I know.
+it's because you need to rebuild the directory structure (just run `build.sh` after unmounting the drive).
 
 1. **Files are mounted and readable, and runs python file**
 ```bash
@@ -221,7 +221,9 @@ The file system is designed as a read-only layer that sits on top of an existing
 
 ## Further Improvements
 
-* Updates made to the NFS directory after mounting are currently reflected in the FUSE mount.
+* Updates made to the NFS directory after mounting are currently not properly reflected in the FUSE mount.
+   * Since `stat` fetches data from NFS, it's possible to edit and update _existing_ files, those changes will be reflected in the mount. However, since the cache is context unaware, if it's updated after caching and read again, new changes will not reflect.
+   * New files and folders will not reflect in the mount, since the node tree is built on startup and not refreshed :(.
 * I did not manage to get around to caching based on a hash of file contents.
 * LRU cache implementation is a bit naive. It can be improved a bunch.
 * In fact, in general I think the way the file system interacts with the cache is a little undercooked. Lots of improvements that can be made here.
